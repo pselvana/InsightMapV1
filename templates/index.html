@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entity-Predicate Graph</title>
+    <!-- Include ECharts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .input-section {
+            margin-bottom: 20px;
+        }
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-size: 14px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #chart-container {
+            width: 100%;
+            height: 600px;
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .legend {
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-right: 20px;
+        }
+        .color-box {
+            width: 15px;
+            height: 15px;
+            margin-right: 5px;
+        }
+        .noun-color {
+            background-color: #5470c6;
+        }
+        .other-color {
+            background-color: #91cc75;
+        }
+        .canonical-color {
+            background-color: #ee6666;
+        }
+        .processing {
+            text-align: center;
+            margin: 10px 0;
+            color: #666;
+            display: none;
+        }
+        .instructions {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Entity-Predicate Graph Extractor with Coreference Resolution</h1>
+        
+        <div class="input-section">
+            <h3>Enter your text:</h3>
+            <textarea id="text-input" placeholder="Enter a corpus of text to extract entities and predicates...">John went to the store. He bought some milk. John likes milk because it is healthy. Mary saw him at the store and she waved. Mary is John's friend from school. They often meet at the cafe to discuss their homework.</textarea>
+            <button id="process-btn">Process Text</button>
+            <div id="processing" class="processing">Processing text... This may take a moment.</div>
+        </div>
+        
+        <div class="instructions">
+            <p><strong>Instructions:</strong> 
+            <ul>
+                <li>Enter text with coreferences (pronouns like "he", "she", "it" that refer to previously mentioned entities)</li>
+                <li>Hover over nodes to see connections and predicates</li>
+                <li>Right-click on nodes to remove them from the graph</li>
+                <li>Pronouns are labeled with their referent (e.g., "he (John)")</li>
+            </ul>
+            </p>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="color-box noun-color"></div>
+                <span>Nouns</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box other-color"></div>
+                <span>Other Entities</span>
+            </div>
+            <div class="legend-item">
+                <div class="color-box canonical-color"></div>
+                <span>Referenced Entities</span>
+            </div>
+        </div>
+        
+        <div id="chart-container"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize ECharts instance
+            const chartDom = document.getElementById('chart-container');
+            const myChart = echarts.init(chartDom);
+            let option = {
+                title: {
+                    text: 'Entity-Predicate Graph',
+                    top: 'top',
+                    left: 'center'
+                },
+                tooltip: {
+                    formatter: function(params) {
+                        if (params.dataType === 'edge') {
+                            return `${params.data.source} <strong>${params.data.value}</strong> ${params.data.target}`;
+                        } else {
+                            return params.data.name;
+                        }
+                    }
+                },
+                legend: [
+                    {
+                        data: ['noun', 'other']
+                    }
+                ],
+                series: [{
+                    type: 'graph',
+                    layout: 'force',
+                    data: [],
+                    links: [],
+                    categories: [
+                        { name: 'noun' },
+                        { name: 'other' }
+                    ],
+                    roam: true,
+                    label: {
+                        show: true,
+                        position: 'right'
+                    },
+                    lineStyle: {
+                        color: 'source',
+                        curveness: 0.3
+                    },
+                    emphasis: {
+                        focus: 'adjacency',
+                        lineStyle: {
+                            width: 4
+                        }
+                    },
+                    force: {
+                        repulsion: 100,
+                        edgeLength: 100
+                    }
+                }]
+            };
+            
+            myChart.setOption(option);
+            
+            // Process text button click handler
+            document.getElementById('process-btn').addEventListener('click', function() {
+                const text = document.getElementById('text-input').value;
+                if (!text.trim()) {
+                    alert('Please enter some text to process.');
+                    return;
+                }
+                
+                // Show processing message
+                document.getElementById('processing').style.display = 'block';
+                
+                // Send text to backend for processing
+                const formData = new FormData();
+                formData.append('text', text);
+                
+                fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Hide processing message
+                    document.getElementById('processing').style.display = 'none';
+                    
+                    // Format data for ECharts
+                    const nodes = data.nodes.map(node => ({
+                        id: node.id,
+                        name: node.name,
+                        symbolSize: node.value,
+                        category: node.category === 'noun' ? 0 : 1,
+                        itemStyle: {
+                            color: node.isCanonical ? '#ee6666' : (node.category === 'noun' ? '#5470c6' : '#91cc75')
+                        }
+                    }));
+                    
+                    const links = data.links.map(link => ({
+                        source: link.source,
+                        target: link.target,
+                        value: link.value,
+                        label: {
+                            show: false,
+                            formatter: link.value 
+                        }
+                    }));
+                    
+                    // Update chart
+                    myChart.setOption({
+                        series: [{
+                            data: nodes,
+                            links: links
+                        }]
+                    });
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('processing').style.display = 'none';
+                    alert('Error processing text. Please try again.');
+                });
+            });
+            
+            // Right click handler to delete nodes
+            myChart.on('contextmenu', function(params) {
+                if (params.dataType === 'node') {
+                    const nodeId = params.data.id;
+                    
+                    // Get current data
+                    const currentOption = myChart.getOption();
+                    const nodes = currentOption.series[0].data;
+                    const links = currentOption.series[0].links;
+                    
+                    // Filter out the selected node
+                    const newNodes = nodes.filter(node => node.id !== nodeId);
+                    
+                    // Filter out links connected to the selected node
+                    const newLinks = links.filter(link => 
+                        link.source !== nodeId && link.target !== nodeId
+                    );
+                    
+                    // Update chart
+                    myChart.setOption({
+                        series: [{
+                            data: newNodes,
+                            links: newLinks
+                        }]
+                    });
+                    
+                    // Prevent default right-click menu
+                    params.event.event.preventDefault();
+                }
+            });
+            
+            // Hover handler to highlight connected nodes and show predicates
+            myChart.on('mouseover', function(params) {
+                if (params.dataType === 'node') {
+                    const nodeId = params.data.id;
+                    const currentOption = myChart.getOption();
+                    const links = currentOption.series[0].links;
+                    
+                    // Find connected links and nodes
+                    const connectedLinks = links.filter(link => 
+                        link.source === nodeId || link.target === nodeId
+                    );
+                    
+                    // Show labels for connected links
+                    const newLinks = links.map(link => {
+                        const newLink = {...link};
+                        if (link.source === nodeId || link.target === nodeId) {
+                            newLink.lineStyle = {
+                                width: 4,
+                                color: '#ff9800'
+                            };
+                            newLink.label = {
+                                show: true,
+                                formatter: link.value,
+                                fontSize: 12,
+                                color: '#333'
+                            };
+                        } else {
+                            newLink.lineStyle = {
+                                width: 1,
+                                opacity: 0.3
+                            };
+                            newLink.label = {
+                                show: false
+                            };
+                        }
+                        return newLink;
+                    });
+                    
+                    myChart.setOption({
+                        series: [{
+                            links: newLinks
+                        }]
+                    });
+                }
+            });
+            
+            myChart.on('mouseout', function(params) {
+                if (params.dataType === 'node') {
+                    const currentOption = myChart.getOption();
+                    const links = currentOption.series[0].links;
+                    
+                    // Reset all links
+                    const newLinks = links.map(link => {
+                        const newLink = {...link};
+                        newLink.lineStyle = {
+                            width: 1,
+                            opacity: 1
+                        };
+                        newLink.label = {
+                            show: false
+                        };
+                        return newLink;
+                    });
+                    
+                    myChart.setOption({
+                        series: [{
+                            links: newLinks
+                        }]
+                    });
+                }
+            });
+            
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                myChart.resize();
+            });
+        });
+    </script>
+</body>
+</html>
