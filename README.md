@@ -70,6 +70,20 @@ Open your web browser and go to:
 http://127.0.0.1:5000/
 ```
 
+## Docker
+
+Alternatively, youc an use Docker to build and run the application
+
+Build:
+```bash
+docker build -t insightmap .
+```
+
+Run:
+```bash
+docker run -p 5000:5000 -it insightmap
+```
+
 ## Usage
 1. Enter or paste text into the text area
 2. Click "Process Text" to analyze and visualize
